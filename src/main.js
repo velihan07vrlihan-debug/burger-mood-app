@@ -1,115 +1,115 @@
-
 import './style.css';
 
-const SUPABASE_URL =
-  'https://vbqzpjxhvxdeehrfmtob.supabase.co';
-
-// Buraya Supabase'in publishable/anon anahtarı eklenecek.
+const SUPABASE_URL = 'https://vbqzpjxhvxdeehrfmtob.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ECikWQJCyolMCAuJkJevJg_ey-lACfJ';
 
-const staffMembers = [
-  {
-    name: 'Burak',
-    id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0'
-  },
-  {
-    name: 'Gönül',
-    id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c'
-  },
-  {
-    name: 'Can',
-    id: 'd631e606-6241-4b65-9714-c63951aa3c59'
-  }
+const fallbackStaff = [
+  { id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0', full_name: 'Burak', role: 'staff' },
+  { id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c', full_name: 'Gönül', role: 'staff' },
+  { id: 'd631e606-6241-4b65-9714-c63951aa3c59', full_name: 'Can', role: 'staff' }
 ];
 
-document.querySelector('#app').innerHTML = `
-  <main class="login-page">
-    <div class="logo">🍔</div>
-    <h1>BURGER MOOD</h1>
-    <p class="subtitle">Personel ve Yönetim Sistemi</p>
+const app = document.querySelector('#app');
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[char]));
 
-    <section class="login-card">
-      <h2>Personel Girişi</h2>
+function showLogin() {
+  app.innerHTML = `
+    <main class="login-page">
+      <div class="logo">🍔</div>
+      <h1>BURGER MOOD</h1>
+      <p class="subtitle">Personel ve Yönetim Sistemi</p>
+      <section class="login-card">
+        <h2>Giriş Yap</h2>
+        <label for="staff">Kullanıcı</label>
+        <select id="staff"><option value="">Personel yükleniyor...</option></select>
+        <label for="pin">6 Haneli PIN</label>
+        <input id="pin" type="password" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="off" />
+        <button id="login">Giriş Yap</button>
+        <p id="message" role="status"></p>
+      </section>
+      <footer>Burger Mood © 2026</footer>
+    </main>`;
+  loadStaff();
+  document.querySelector('#login').addEventListener('click', login);
+}
 
-      <label for="staff">Personel</label>
-      <select id="staff">
-        <option value="">Personel seçiniz</option>
-        ${staffMembers.map(s =>
-          `<option value="${s.id}">${s.name}</option>`
-        ).join('')}
-      </select>
-
-      <label for="pin">6 Haneli PIN</label>
-      <input
-        id="pin"
-        type="password"
-        inputmode="numeric"
-        maxlength="6"
-        placeholder="••••••"
-        autocomplete="off"
-      />
-
-      <button id="login">Giriş Yap</button>
-      <p id="message" role="status"></p>
-    </section>
-
-    <footer>Burger Mood © 2026</footer>
-  </main>
-`;
-
-document.querySelector('#login').addEventListener(
-  'click',
-  async () => {
-    const staffId = document.querySelector('#staff').value;
-    const pin = document.querySelector('#pin').value;
-    const message = document.querySelector('#message');
-    const button = document.querySelector('#login');
-
-    if (!staffId || !/^[0-9]{6}$/.test(pin)) {
-      message.textContent = 'Personel ve 6 haneli PIN gerekli.';
-      return;
+async function loadStaff() {
+  let staff = fallbackStaff;
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/staff?select=id,full_name,role,is_active&is_active=eq.true`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!response.ok) throw new Error('Personel listesi alınamadı');
+    const data = await response.json();
+    if (!Array.isArray(data)) throw new Error('Geçersiz yanıt');
+    const unique = new Map(fallbackStaff.map(s => [s.id, s]));
+    for (const person of data) {
+      if (person.id && person.full_name) unique.set(person.id, person);
     }
-
-    if (!SUPABASE_KEY) {
-      message.textContent = 'Supabase bağlantı anahtarı eksik.';
-      return;
-    }
-
-    button.disabled = true;
-    message.textContent = 'Giriş kontrol ediliyor...';
-
-    try {
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/staff-pin-login`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY
-          },
-          body: JSON.stringify({
-            staff_id: staffId,
-            pin: pin
-          })
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Giriş başarısız.');
-      }
-
-      if (result.success === true) {
-        message.textContent = 'Giriş başarılı!';
-      } else {
-        message.textContent = 'PIN doğrulanamadı.';
-      }
-    } catch (error) {
-      message.textContent = 'Bağlantı veya giriş hatası oluştu.';
-      console.error(error);
-    } finally {
-      button.disabled = false;
-    }
+    staff = [...unique.values()];
+  } catch (error) {
+    console.warn('Supabase personel listesi okunamadı:', error);
+    document.querySelector('#message').textContent = 'Canlı liste alınamadı; kayıtlı personel gösteriliyor.';
   }
-);
+  const select = document.querySelector('#staff');
+  select.innerHTML = '<option value="">Personel seçiniz</option>' +
+    staff.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.full_name)}${s.role === 'admin' ? ' (Yönetici)' : ''}</option>`).join('');
+}
+
+async function login() {
+  const select = document.querySelector('#staff');
+  const staffId = select.value;
+  const pin = document.querySelector('#pin').value;
+  const message = document.querySelector('#message');
+  const button = document.querySelector('#login');
+  if (!staffId || !/^\d{6}$/.test(pin)) {
+    message.textContent = 'Personel seç ve 6 haneli PIN gir.';
+    return;
+  }
+  button.disabled = true;
+  message.textContent = 'Giriş kontrol ediliyor...';
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/staff-pin-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+      body: JSON.stringify({ staff_id: staffId, pin })
+    });
+    const result = await response.json();
+    if (!response.ok || result.success !== true) {
+      throw new Error(result.error || 'PIN doğrulanamadı.');
+    }
+    // Sunucunun döndürdüğü rol varsa onu kullan; yalnızca görünen paneli belirler.
+    const role = result.staff?.role || result.user?.role || result.role || 'staff';
+    const name = result.staff?.full_name || result.user?.full_name ||
+      select.options[select.selectedIndex].text.replace(' (Yönetici)', '');
+    showPanel(name, role);
+  } catch (error) {
+    message.textContent = error.message || 'Bağlantı veya giriş hatası oluştu.';
+    console.error(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function showPanel(name, role) {
+  const isAdmin = role === 'admin';
+  app.innerHTML = `
+    <main class="login-page">
+      <div class="logo">🍔</div>
+      <h1>BURGER MOOD</h1>
+      <p class="subtitle">${isAdmin ? 'Yönetici Paneli' : 'Personel Paneli'}</p>
+      <section class="login-card">
+        <h2>Hoş geldin, ${escapeHtml(name)}</h2>
+        <p>Giriş doğrulandı.</p>
+        <p>${isAdmin ? 'Personel, izin, görev, PDF ve rapor modülleri sonraki aşamada bağlanacak.' : 'Kişisel görev çetelesi sonraki aşamada bağlanacak.'}</p>
+        <button id="logout">Çıkış Yap</button>
+      </section>
+      <footer>Burger Mood © 2026</footer>
+    </main>`;
+  document.querySelector('#logout').addEventListener('click', showLogin);
+}
+
+showLogin();
