@@ -3,13 +3,6 @@ import './style.css';
 const SUPABASE_URL = 'https://vbqzpjxhvxdeehrfmtob.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ECikWQJCyolMCAuJkJevJg_ey-lACfJ';
 
-const fallbackStaff = [
-  { id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0', full_name: 'Burak', role: 'staff' },
-  { id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c', full_name: 'Gönül', role: 'staff' },
-  { id: 'd631e606-6241-4b65-9714-c63951aa3c59', full_name: 'Can', role: 'staff' },
-  { id: 'c090813c-ec5b-4c78-8e3c-0c73b699da2e', full_name: 'Burger Mood Yöneticisi', role: 'admin' }
-];
-
 const app = document.querySelector('#app');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -47,7 +40,7 @@ async function loadStaff() {
   const errors = [];
 
   // PIN doğrulama sisteminin kullandığı tabloyu önce dene.
-  for (const table of ['pin_staff', 'staff']) {
+  for (const table of ['pin_staff']) {
     try {
       const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
@@ -73,9 +66,7 @@ async function loadStaff() {
   }
   if (!select.isConnected) return;
   if (!staff.length) {
-    // Yalnızca arayüzde seçim yapabilmek için; doğrulama her zaman sunucuda yapılır.
-    staff = fallbackStaff;
-    message.textContent = 'Canlı personel listesi alınamadı. Giriş için sunucudaki kayıtların eşleşmesi gerekir.';
+    message.textContent = 'Personel listesi alınamadı. Bağlantıyı kontrol edip sayfayı yenileyin.';
     console.warn('Personel listesi hataları:', errors);
   } else {
     message.textContent = '';
@@ -108,12 +99,13 @@ async function login() {
     if (!response.ok || result.success !== true) {
       const serverError = result.error || result.message || result.details;
       const detail = typeof serverError === 'string' ? serverError : serverError?.message;
-      throw new Error(detail || `PIN doğrulanamadı (HTTP ${response.status}).`);
+      throw new Error(detail || `Giriş başarısız (HTTP ${response.status}).`);
     }
     // Yetkiyi yalnızca doğrulama servisinin cevabından al.
     const role = result.staff?.role || result.user?.role || result.role || 'staff';
     const name = result.staff?.full_name || result.user?.full_name ||
       select.options[select.selectedIndex].text.replace(' (Yönetici)', '');
+    document.querySelector('#pin').value = '';
     showPanel(name, role);
   } catch (error) {
     message.textContent = error.message || 'Bağlantı veya giriş hatası oluştu.';
