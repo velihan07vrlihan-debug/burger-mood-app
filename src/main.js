@@ -3,17 +3,15 @@ import './style.css';
 const SUPABASE_URL = 'https://vbqzpjxhvxdeehrfmtob.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ECikWQJCyolMCAuJkJevJg_ey-lACfJ';
 
-
 const fallbackStaff = [
-  { id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0', name: 'Burak' },
-  { id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c', name: 'Gönül' },
-  { id: 'd631e606-6241-4b65-9714-c63951aa3c59', name: 'Can' },
-  { id: 'c090813c-ec5b-4c78-8e3c-0c73b699da2e', name: 'Burger Mood Yöneticisi' }
+  { id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0', full_name: 'Burak', role: 'staff' },
+  { id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c', full_name: 'Gönül', role: 'staff' },
+  { id: 'd631e606-6241-4b65-9714-c63951aa3c59', full_name: 'Can', role: 'staff' },
+  { id: 'c090813c-ec5b-4c78-8e3c-0c73b699da2e', full_name: 'Burger Mood Yöneticisi', role: 'admin' }
 ];
 
-
 const app = document.querySelector('#app');
-const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char => ({
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[char]));
 
@@ -34,11 +32,15 @@ function showLogin() {
       </section>
       <footer>Burger Mood © 2026</footer>
     </main>`;
-  loadStaff();
   document.querySelector('#login').addEventListener('click', login);
+  document.querySelector('#pin').addEventListener('keydown', event => {
+    if (event.key === 'Enter') login();
+  });
+  loadStaff();
 }
 
 async function loadStaff() {
+  const select = document.querySelector('#staff');
   let staff = fallbackStaff;
   try {
     const response = await fetch(
@@ -48,18 +50,18 @@ async function loadStaff() {
     if (!response.ok) throw new Error('Personel listesi alınamadı');
     const data = await response.json();
     if (!Array.isArray(data)) throw new Error('Geçersiz yanıt');
-    const unique = new Map(fallbackStaff.map(s => [s.id, s]));
+    const unique = new Map(fallbackStaff.map(person => [person.id, person]));
     for (const person of data) {
       if (person.id && person.full_name) unique.set(person.id, person);
     }
     staff = [...unique.values()];
   } catch (error) {
-    console.warn('Supabase personel listesi okunamadı:', error);
+    console.warn('Canlı personel listesi okunamadı:', error);
     document.querySelector('#message').textContent = 'Canlı liste alınamadı; kayıtlı personel gösteriliyor.';
   }
-  const select = document.querySelector('#staff');
+  if (!select.isConnected) return;
   select.innerHTML = '<option value="">Personel seçiniz</option>' +
-    staff.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.full_name)}${s.role === 'admin' ? ' (Yönetici)' : ''}</option>`).join('');
+    staff.map(person => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.full_name)}${person.role === 'admin' ? ' (Yönetici)' : ''}</option>`).join('');
 }
 
 async function login() {
@@ -84,7 +86,7 @@ async function login() {
     if (!response.ok || result.success !== true) {
       throw new Error(result.error || 'PIN doğrulanamadı.');
     }
-    // Sunucunun döndürdüğü rol varsa onu kullan; yalnızca görünen paneli belirler.
+    // Yetkiyi yalnızca doğrulama servisinin cevabından al.
     const role = result.staff?.role || result.user?.role || result.role || 'staff';
     const name = result.staff?.full_name || result.user?.full_name ||
       select.options[select.selectedIndex].text.replace(' (Yönetici)', '');
@@ -107,7 +109,7 @@ function showPanel(name, role) {
       <section class="login-card">
         <h2>Hoş geldin, ${escapeHtml(name)}</h2>
         <p>Giriş doğrulandı.</p>
-        <p>${isAdmin ? 'Personel, izin, görev, PDF ve rapor modülleri sonraki aşamada bağlanacak.' : 'Kişisel görev çetelesi sonraki aşamada bağlanacak.'}</p>
+        <p>${isAdmin ? 'Personel, izin, görev, PDF ve rapor modülleri henüz bağlı değil.' : 'Kişisel görev çetelesi henüz bağlı değil.'}</p>
         <button id="logout">Çıkış Yap</button>
       </section>
       <footer>Burger Mood © 2026</footer>
