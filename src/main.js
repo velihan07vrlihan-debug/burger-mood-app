@@ -3,11 +3,14 @@ import './style.css';
 const SUPABASE_URL = 'https://vbqzpjxhvxdeehrfmtob.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_ECikWQJCyolMCAuJkJevJg_ey-lACfJ';
 
+
 const fallbackStaff = [
-  { id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0', full_name: 'Burak', role: 'staff' },
-  { id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c', full_name: 'Gönül', role: 'staff' },
-  { id: 'd631e606-6241-4b65-9714-c63951aa3c59', full_name: 'Can', role: 'staff' }
+  { id: 'adad1e2d-ef85-4464-ab93-6ba50e2fb3e0', name: 'Burak' },
+  { id: 'f71f7f9d-d006-4ef6-a143-e3f033e0304c', name: 'Gönül' },
+  { id: 'd631e606-6241-4b65-9714-c63951aa3c59', name: 'Can' },
+  { id: 'c090813c-ec5b-4c78-8e3c-0c73b699da2e', name: 'Burger Mood Yöneticisi' }
 ];
+
 
 const app = document.querySelector('#app');
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, char => ({
