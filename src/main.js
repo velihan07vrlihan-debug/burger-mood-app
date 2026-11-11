@@ -106,7 +106,14 @@ async function login() {
     const name = result.staff?.full_name || result.user?.full_name ||
       select.options[select.selectedIndex].text.replace(' (Yönetici)', '');
     document.querySelector('#pin').value = '';
-    showPanel(name, role, staffId, pin);
+    const issued = await fetch(`${SUPABASE_URL}/functions/v1/bm-data`, {
+      method:'POST', headers:{'Content-Type':'application/json',apikey:SUPABASE_KEY},
+      body:JSON.stringify({action:'start_session',staff_id:staffId,pin})
+    });
+    const auth = await issued.json();
+    if(!issued.ok || !auth.token) throw new Error('Oturum oluşturulamadı');
+    localStorage.setItem('bm_session',auth.token);
+    showPanel(name, role, staffId, auth.token);
   } catch (error) {
     message.textContent = error.message || 'Bağlantı veya giriş hatası oluştu.';
     console.error(error);
@@ -125,13 +132,13 @@ const today = () => new Date().toLocaleDateString('sv-SE');
 const monday = () => { const d = new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-(d.getDay()+6)%7);return d; };
 const dateOf = (day) => {const d=monday();d.setDate(d.getDate()+day);return d.toLocaleDateString('sv-SE');};
 async function api(action, fields={}) {
- const response = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_KEY},body:JSON.stringify({staff_id:session.id,pin:session.pin,action,...fields})});
+ const response = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_KEY},body:JSON.stringify({token:session.token,action,...fields})});
  const result = await response.json().catch(()=>({}));
  if(!response.ok || result.error)throw new Error(result.error || `HTTP ${response.status}`);
  return result;
 }
-async function showPanel(name,role,id,pin){
- session={name,role,id,pin};
+async function showPanel(name,role,id,token){
+ session={name,role,id,token};
  app.innerHTML='<main class="login-page"><h2>Görevler yükleniyor...</h2></main>';
  await refresh();
 }
@@ -140,7 +147,10 @@ async function refresh(){
  catch(e){app.innerHTML=`<main class="login-page"><h2>Veriler yüklenemedi</h2><p>${escapeHtml(e.message)}</p><button id="retry">Tekrar dene</button><button id="logout">Çıkış</button></main>`;
  document.querySelector('#retry').onclick=refresh;document.querySelector('#logout').onclick=logout;}
 }
-function logout(){session=null;panelData=null;showLogin();}
+function logout(){
+ if(session?.token) api('logout').catch(()=>{});
+ localStorage.removeItem('bm_session');session=null;panelData=null;showLogin();
+}
 function renderPanel(){
  const admin=panelData.admin;
  const staff=panelData.staff.filter(s=>s.id!=='c090813c-ec5b-4c78-8e3c-0c73b699da2e');
@@ -168,7 +178,9 @@ function renderPanel(){
  return `<td style="padding:10px 2px;border-bottom:1px solid #374151;text-align:center">${admin?
  `<label style="display:flex;justify-content:center;align-items:center;gap:4px"><input type="checkbox" data-leave="${s.id}" data-date="${dateOf(i)}" ${on?'checked':''} style="width:18px;height:18px">İzin</label>`:(on?'İzin':'Çalışıyor')}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>
  <button id="print">Yazdır / PDF</button></section>
- ${admin?`<section class="login-card" style="max-width:none;margin-top:20px"><h2>Son 7 gün görev raporu</h2>
+ ${admin?`<section class="login-card" style="max-width:none;margin-top:20px"><h2>Personel bazında son 7 gün</h2>
+ ${staff.map(person=>`<p style="border-bottom:1px solid #374151;padding:12px 0"><strong>${escapeHtml(person.full_name)}</strong> — ${panelData.completions.filter(c=>c.staff_id===person.id).length} tamamlanan görev</p>`).join('')}
+ <h2>Son 7 gün görev raporu</h2>
  ${panelData.completions.length?panelData.completions.map(c=>`<p style="border-bottom:1px solid #374151;padding:8px 0">${escapeHtml(panelData.staff.find(s=>s.id===c.staff_id)?.full_name||'Personel')} · ${escapeHtml(panelData.tasks.find(t=>t.id===c.task_id)?.title||'Görev')} · ${escapeHtml(c.work_date)}</p>`).join(''):'Henüz kayıt yok'}</section>`:''}
  </main>`;
  document.querySelector('#logout').onclick=logout;
@@ -187,4 +199,15 @@ function renderPanel(){
  });
 }
 
-showLogin();
+async function restoreSession(){
+ const token=localStorage.getItem('bm_session');
+ if(!token){showLogin();return;}
+ session={token};
+ app.innerHTML='<main class="login-page"><h2>Oturum kontrol ediliyor...</h2></main>';
+ try{
+  const data=await api('whoami');
+  session={token,id:data.staff.id,name:data.staff.full_name,role:data.staff.role};
+  await refresh();
+ }catch(e){localStorage.removeItem('bm_session');session=null;showLogin();}
+}
+restoreSession();
