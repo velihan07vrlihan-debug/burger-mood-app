@@ -41,27 +41,49 @@ function showLogin() {
 
 async function loadStaff() {
   const select = document.querySelector('#staff');
-  let staff = fallbackStaff;
-  try {
-    const response = await fetch(
-      `${SUPABASE_URL}/rest/v1/staff?select=id,full_name,role,is_active&is_active=eq.true`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-    );
-    if (!response.ok) throw new Error('Personel listesi alınamadı');
-    const data = await response.json();
-    if (!Array.isArray(data)) throw new Error('Geçersiz yanıt');
-    const unique = new Map(fallbackStaff.map(person => [person.id, person]));
-    for (const person of data) {
-      if (person.id && person.full_name) unique.set(person.id, person);
+  const message = document.querySelector('#message');
+  const previous = select.value;
+  let staff = [];
+  const errors = [];
+
+  // PIN doğrulama sisteminin kullandığı tabloyu önce dene.
+  for (const table of ['pin_staff', 'staff']) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(`${response.status}: ${details.message || details.code || 'Tablo okunamadı'}`);
+      }
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error('Beklenmeyen personel listesi');
+      staff = data.filter(p => p.is_active !== false && p.active !== false)
+        .map(p => ({
+          id: p.id || p.staff_id,
+          full_name: p.full_name || p.name || p.display_name || p.staff_name,
+          role: p.role || 'staff'
+        })).filter(p => p.id && p.full_name);
+      if (staff.length) break;
+      errors.push(`${table}: aktif personel bulunamadı`);
+    } catch (error) {
+      errors.push(`${table}: ${error.message}`);
     }
-    staff = [...unique.values()];
-  } catch (error) {
-    console.warn('Canlı personel listesi okunamadı:', error);
-    document.querySelector('#message').textContent = 'Canlı liste alınamadı; kayıtlı personel gösteriliyor.';
   }
   if (!select.isConnected) return;
+  if (!staff.length) {
+    // Yalnızca arayüzde seçim yapabilmek için; doğrulama her zaman sunucuda yapılır.
+    staff = fallbackStaff;
+    message.textContent = 'Canlı personel listesi alınamadı. Giriş için sunucudaki kayıtların eşleşmesi gerekir.';
+    console.warn('Personel listesi hataları:', errors);
+  } else {
+    message.textContent = '';
+  }
+  const unique = [...new Map(staff.map(p => [p.id, p])).values()];
   select.innerHTML = '<option value="">Personel seçiniz</option>' +
-    staff.map(person => `<option value="${escapeHtml(person.id)}">${escapeHtml(person.full_name)}${person.role === 'admin' ? ' (Yönetici)' : ''}</option>`).join('');
+    unique.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.full_name)}${p.role === 'admin' ? ' (Yönetici)' : ''}</option>`).join('');
+  if (unique.some(p => p.id === previous)) select.value = previous;
 }
 
 async function login() {
@@ -82,9 +104,11 @@ async function login() {
       headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
       body: JSON.stringify({ staff_id: staffId, pin })
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
     if (!response.ok || result.success !== true) {
-      throw new Error(result.error || 'PIN doğrulanamadı.');
+      const serverError = result.error || result.message || result.details;
+      const detail = typeof serverError === 'string' ? serverError : serverError?.message;
+      throw new Error(detail || `PIN doğrulanamadı (HTTP ${response.status}).`);
     }
     // Yetkiyi yalnızca doğrulama servisinin cevabından al.
     const role = result.staff?.role || result.user?.role || result.role || 'staff';
