@@ -115,22 +115,87 @@ async function login() {
   }
 }
 
+
+const DEFAULT_TASKS = [
+  'İçecek dolabı kontrolü', 'Sos kontrolü', 'Peçete ve pipet kontrolü',
+  'Masa ve salon düzeni', 'Tepsi toplama', 'Tuvalet kontrolü',
+  'Çöp kontrolü', 'Oyun alanı oyuncaklarını toplama',
+  'Fiş ve içecek kontrolü', 'Sipariş zili kontrolü'
+];
+const DAYS = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
+const PEOPLE = [
+  {name:'Burak',hours:'12:00–21:00'},
+  {name:'Can',hours:'18:00–00:00'},
+  {name:'Gönül',hours:'18:00–00:00'}
+];
+let signedIn = null;
+function readData() {
+  try { return JSON.parse(localStorage.getItem('burger-mood-v1')) || {}; }
+  catch { return {}; }
+}
+function writeData(data) { localStorage.setItem('burger-mood-v1', JSON.stringify(data)); }
 function showPanel(name, role) {
-  const isAdmin = role === 'admin';
+  signedIn = {name, role};
+  renderPanel();
+}
+function renderPanel() {
+  const admin = signedIn.role === 'admin';
+  const data = readData();
+  const date = new Date().toLocaleDateString('sv-SE');
+  const owner = admin ? 'Yönetici' : signedIn.name;
+  const key = date + ':' + owner;
+  const done = (data.done || {})[key] || {};
+  const tasks = [...DEFAULT_TASKS, ...(data.extra || [])];
+  const leave = data.leave || {};
   app.innerHTML = `
-    <main class="login-page">
-      <div class="logo">🍔</div>
-      <h1>BURGER MOOD</h1>
-      <p class="subtitle">${isAdmin ? 'Yönetici Paneli' : 'Personel Paneli'}</p>
-      <section class="login-card">
-        <h2>Hoş geldin, ${escapeHtml(name)}</h2>
-        <p>Giriş doğrulandı.</p>
-        <p>${isAdmin ? 'Personel, izin, görev, PDF ve rapor modülleri henüz bağlı değil.' : 'Kişisel görev çetelesi henüz bağlı değil.'}</p>
-        <button id="logout">Çıkış Yap</button>
+    <main class="login-page" style="padding:20px;display:block;max-width:850px;margin:auto">
+      <header style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div><h1 style="text-align:left;font-size:24px">🍔 BURGER MOOD</h1>
+        <p class="subtitle">${admin ? 'Yönetici' : 'Personel'} · ${escapeHtml(signedIn.name)}</p></div>
+        <button id="logout" style="width:auto;padding:0 15px">Çıkış</button>
+      </header>
+      <section class="login-card" style="max-width:none;margin-top:20px">
+        <h2>Günlük görevler · ${date}</h2>
+        <p style="color:#9ca3af;font-size:13px">Her çalışan kendi hesabında işaretleme yapar.</p>
+        ${tasks.map((task, i) => `<label style="display:flex;align-items:center;gap:12px;margin:0;padding:12px 0;border-bottom:1px solid #374151">
+          <input type="checkbox" data-task="${i}" ${done[task] ? 'checked' : ''} style="width:22px;height:22px;flex:none">
+          <span>${escapeHtml(task)}</span></label>`).join('')}
+        <p>${tasks.filter(t => done[t]).length} / ${tasks.length} tamamlandı</p>
+        <input id="new-task" maxlength="100" placeholder="Yeni görev tanımı">
+        <button id="add-task">Görev ekle</button>
       </section>
-      <footer>Burger Mood © 2026</footer>
+      <section class="login-card" style="max-width:none;margin-top:20px">
+        <h2>Haftalık vardiya ve izinler</h2>
+        <p style="color:#9ca3af;font-size:13px">İzinleri yönetici düzenleyebilir. Çizelge taslaktır; personel yeterliliği otomatik denetlenmez.</p>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr><th style="text-align:left">Gün</th>${PEOPLE.map(p=>`<th>${p.name}</th>`).join('')}</tr></thead>
+          <tbody>${DAYS.map(day=>`<tr><td style="padding:12px 3px;border-bottom:1px solid #374151">${day}</td>${PEOPLE.map(person=>`<td style="padding:12px 3px;border-bottom:1px solid #374151;text-align:center">${admin
+            ? `<label style="display:flex;align-items:center;justify-content:center;gap:4px"><input type="checkbox" style="width:18px;height:18px" data-leave="${day}:${person.name}" ${leave[day+':'+person.name]?'checked':''}> İzin</label>`
+            : leave[day+':'+person.name]?'İzin':person.hours}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+        <button id="print">Yazdır / PDF kaydet</button>
+      </section>
+      <p style="color:#9ca3af;font-size:12px">İlk sürüm: Kayıtlar yalnızca bu cihazın tarayıcısında saklanır. Cihazlar arası senkronizasyon henüz yoktur.</p>
     </main>`;
-  document.querySelector('#logout').addEventListener('click', showLogin);
+  document.querySelector('#logout').addEventListener('click', () => {signedIn = null;showLogin();});
+  document.querySelectorAll('[data-task]').forEach(box => box.addEventListener('change', () => {
+    const db=readData(); db.done ||= {}; db.done[key] ||= {};
+    db.done[key][tasks[Number(box.dataset.task)]] = box.checked;
+    writeData(db); renderPanel();
+  }));
+  document.querySelector('#add-task').addEventListener('click', () => {
+    const value=document.querySelector('#new-task').value.trim();
+    if(!value)return;
+    const db=readData();db.extra ||= [];
+    if(![...DEFAULT_TASKS,...db.extra].includes(value)){db.extra.push(value);writeData(db);}
+    renderPanel();
+  });
+  document.querySelectorAll('[data-leave]').forEach(box=>box.addEventListener('change',()=>{
+    if(!admin)return;
+    const db=readData();db.leave ||= {};db.leave[box.dataset.leave]=box.checked;
+    writeData(db);renderPanel();
+  }));
+  document.querySelector('#print').addEventListener('click',()=>window.print());
 }
 
 showLogin();
