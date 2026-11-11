@@ -1,0 +1,54 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://burger-mood-app.vercel.app",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Vary": "Origin",
+};
+
+const json = (body: unknown, status = 200) =>
+  Response.json(body, { status, headers: corsHeaders });
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return json({ success: false, message: "POST gerekli" }, 405);
+  }
+
+  try {
+    const body = await req.json();
+    const { staff_id, pin } = body ?? {};
+
+    if (
+      typeof staff_id !== "string" ||
+      !/^[0-9a-f-]{36}$/i.test(staff_id) ||
+      typeof pin !== "string" ||
+      !/^[0-9]{6}$/.test(pin)
+    ) {
+      return json({ success: false, message: "Geçersiz giriş bilgileri" }, 400);
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data, error } = await supabase.rpc("verify_staff_pin", {
+      p_staff_id: staff_id,
+      p_pin: pin,
+    });
+
+    if (error) {
+      console.error("PIN doğrulama hatası:", error.code);
+      return json({ success: false, message: "Giriş işlemi tamamlanamadı" }, 500);
+    }
+
+    return json(data);
+  } catch {
+    return json({ success: false, message: "Geçersiz istek" }, 400);
+  }
+});
