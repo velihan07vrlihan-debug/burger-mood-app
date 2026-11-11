@@ -181,10 +181,40 @@ function renderPanel(){
  ${admin?`<section class="login-card" style="max-width:none;margin-top:20px"><h2>Personel bazında son 7 gün</h2>
  ${staff.map(person=>`<p style="border-bottom:1px solid #374151;padding:12px 0"><strong>${escapeHtml(person.full_name)}</strong> — ${panelData.completions.filter(c=>c.staff_id===person.id).length} tamamlanan görev</p>`).join('')}
  <h2>Son 7 gün görev raporu</h2>
- ${panelData.completions.length?panelData.completions.map(c=>`<p style="border-bottom:1px solid #374151;padding:8px 0">${escapeHtml(panelData.staff.find(s=>s.id===c.staff_id)?.full_name||'Personel')} · ${escapeHtml(panelData.tasks.find(t=>t.id===c.task_id)?.title||'Görev')} · ${escapeHtml(c.work_date)}</p>`).join(''):'Henüz kayıt yok'}</section>`:''}
+ <label for="report-person">Personel filtresi</label>
+ <select id="report-person"><option value="">Tüm personel</option>${staff.map(person=>`<option value="${person.id}">${escapeHtml(person.full_name)}</option>`).join('')}</select>
+ <button id="csv-report">Raporu CSV olarak indir</button>
+ <div id="report-rows">
+ ${panelData.completions.length?panelData.completions.map(c=>`<p style="border-bottom:1px solid #374151;padding:8px 0">${escapeHtml(panelData.staff.find(s=>s.id===c.staff_id)?.full_name||'Personel')} · ${escapeHtml(panelData.tasks.find(t=>t.id===c.task_id)?.title||'Görev')} · ${escapeHtml(c.work_date)}</p>`).join(''):'Henüz kayıt yok'}</div></section>`:''}
  </main>`;
  document.querySelector('#logout').onclick=logout;
  document.querySelector('#print').onclick=()=>window.print();
+ if(admin){
+   const rows=document.querySelector('#report-rows');
+   const initial=rows.innerHTML;
+   const reportLines=panelData.completions.map(c=>({
+     personId:c.staff_id,
+     person:panelData.staff.find(p=>p.id===c.staff_id)?.full_name||'Personel',
+     title:panelData.tasks.find(t=>t.id===c.task_id)?.title||'Görev',
+     date:c.work_date,
+     time:c.completed_at
+   }));
+   const filter=document.querySelector('#report-person');
+   filter.onchange=()=>{
+     const matches=reportLines.filter(r=>!filter.value||r.personId===filter.value);
+     rows.innerHTML=matches.length?matches.map(r=>`<p style="border-bottom:1px solid #374151;padding:8px 0">${escapeHtml(r.person)} · ${escapeHtml(r.title)} · ${escapeHtml(r.date)}</p>`).join(''):'Bu personel için kayıt yok';
+   };
+   document.querySelector('#csv-report').onclick=()=>{
+     const selected=reportLines.filter(r=>!filter.value||r.personId===filter.value);
+     const csvCell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+     const csv='\\uFEFF'+[['Personel','Görev','Tarih','Tamamlanma zamanı'],...selected.map(r=>[r.person,r.title,r.date,r.time])].map(line=>line.map(csvCell).join(';')).join('\\r\\n');
+     const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+     const url=URL.createObjectURL(blob);
+     const link=document.createElement('a');link.href=url;link.download='burger-mood-gorev-raporu.csv';link.click();
+     setTimeout(()=>URL.revokeObjectURL(url),1000);
+   };
+ }
+
  document.querySelector('#add-task').onclick=async()=>{
  const title=document.querySelector('#new-task').value.trim();if(!title)return;
  try{await api('add_task',{title});await refresh();}catch(e){document.querySelector('#status').textContent=e.message;}
